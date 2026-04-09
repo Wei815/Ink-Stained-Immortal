@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GlobalState, updateStateAndLog } from '../state/GlobalState';
 import { SaveManager } from '../state/SaveManager';
+import { BossEntity } from '../core/BossEntity';
 
 interface BattleUnit {
     state: any; 
@@ -23,6 +24,7 @@ export class BattleScene extends Phaser.Scene {
 
     private btnAttack!: Phaser.GameObjects.Text;
     private btnItem!: Phaser.GameObjects.Text;
+    private bossEntity!: BossEntity;
 
     constructor() {
         super({ key: 'BattleScene' });
@@ -47,6 +49,8 @@ export class BattleScene extends Phaser.Scene {
         enemySprite.setOrigin(0.5, 1).setScale(0.8);
         if (enemySprite.width > 0) enemySprite.flipX = false;
         this.tweens.add({ targets: enemySprite, y: enemySprite.y + 5, yoyo: true, repeat: -1, duration: 1200 });
+
+        this.bossEntity = new BossEntity(this, enemySprite, GlobalState.enemy);
 
         this.mainLayer.add([playerSprite, enemySprite]);
 
@@ -115,10 +119,19 @@ export class BattleScene extends Phaser.Scene {
     update() {
         this.colorMatrixFX.grayscale(1 - (GlobalState.worldColorValue / 100));
 
+        if (this.bossEntity) {
+            this.bossEntity.updateInkParticles();
+        }
+
         if (this.isAnimating || this.activeUnit) return;
 
         for (let unit of this.units) {
             if (unit.state.hp <= 0) continue;
+
+            if (!unit.isPlayer && this.bossEntity && this.bossEntity.isInvulnerable) {
+                continue;
+            }
+
             // 套用流雲天賦：+行動速度
             const spdBonus = (unit.isPlayer && GlobalState.player.activeTalents?.includes('tal_water')) ? 5 : 0;
             unit.ag += (unit.state.spd + spdBonus) * 2.5; 
@@ -225,8 +238,8 @@ export class BattleScene extends Phaser.Scene {
             isFireTalentTriggered = true;
         }
 
-        if (!attacker.isPlayer && GlobalState.worldColorValue <= 30) {
-            multiplier *= 1.5; 
+        if (!attacker.isPlayer) {
+            multiplier *= (1 + (100 - GlobalState.worldColorValue) / 100);
         }
 
         const finalDmg = Math.floor(baseDmg * multiplier * Phaser.Math.FloatBetween(0.9, 1.1));
@@ -236,6 +249,10 @@ export class BattleScene extends Phaser.Scene {
             if(defender.isPlayer) state.player.hp = defender.state.hp;
             else state.enemy.hp = defender.state.hp;
         });
+
+        if (!defender.isPlayer && this.bossEntity) {
+            this.bossEntity.checkAndHandlePhaseTransition();
+        }
 
         this.triggerDamageVisuals(defender, finalDmg, isSuperEffective, isFireTalentTriggered);
     }

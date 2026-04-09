@@ -26,32 +26,40 @@ export class MainScene extends Phaser.Scene {
         super({ key: 'MainScene' });
     }
 
+    preload() {
+        this.load.image('player_xianjian', '/assets/player_xianjian.png');
+        this.load.image('npc_elder', '/assets/npc_elder.png');
+        this.load.image('spirit_spring', '/assets/spirit_spring.png');
+        this.load.image('bg_ink_dojo', '/assets/bg_ink_dojo.png');
+    }
+
     create() {
         SaveManager.saveGame(); // 自動存檔點
         this.cameras.main.fadeIn(500);
         this.colorMatrixFX = this.cameras.main.postFX.addColorMatrix();
         
-        const playerGeom = this.add.rectangle(0, 0, 32, 32, 0xffffff);
-        this.player = this.physics.add.existing(playerGeom) as unknown as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
-        this.player.body.setSize(32, 32);
-        this.player.setPosition(200, 300);
-        this.player.body.setCollideWorldBounds(true);
+        const bg = this.add.image(0, 0, 'bg_ink_dojo').setOrigin(0, 0);
+        bg.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+        bg.setDepth(-10);
 
-        const wallGeom = this.add.rectangle(0, 0, 40, 300, 0x555555);
+        this.player = this.physics.add.sprite(200, 300, 'player_xianjian');
+        this.player.setDisplaySize(64, 64);
+        this.player.body.setSize(64, 64);
+        this.player.setCollideWorldBounds(true);
+
+        const wallGeom = this.add.rectangle(0, 0, 40, 300, 0x000000, 0.4);
         this.wall = this.physics.add.existing(wallGeom, true) as unknown as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody; 
         this.wall.setPosition(400, 300);
         this.wall.body.updateFromGameObject();
 
-        const npcGeom = this.add.rectangle(0, 0, 32, 32, 0x00ff00);
-        this.npc = this.physics.add.existing(npcGeom, true) as unknown as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
-        this.npc.setPosition(600, 300);
-        this.npc.body.updateFromGameObject();
+        this.npc = this.physics.add.sprite(600, 300, 'npc_elder');
+        this.npc.setDisplaySize(64, 64);
+        this.npc.setImmovable(true);
 
         // 設置水之謎觸發節點 (藍色)
-        const pzGeom = this.add.circle(0, 0, 20, 0x0088ff);
-        this.puzzleNode = this.physics.add.existing(pzGeom, true) as unknown as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
-        this.puzzleNode.setPosition(400, 100);
-        this.puzzleNode.body.updateFromGameObject();
+        this.puzzleNode = this.physics.add.sprite(400, 100, 'spirit_spring');
+        this.puzzleNode.setDisplaySize(64, 64);
+        this.puzzleNode.setImmovable(true);
 
         this.physics.add.collider(this.player, this.wall);
         this.physics.add.collider(this.player, this.npc);

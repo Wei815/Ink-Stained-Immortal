@@ -1,9 +1,21 @@
 import { GlobalState } from './GlobalState';
 
 export const SaveManager = {
+    _generateChecksum(data: string): string {
+        let hash = 0;
+        for (let i = 0; i < data.length; i++) {
+            const char = data.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; 
+        }
+        return hash.toString(16);
+    },
+
     saveGame() {
         try {
-            const data = JSON.stringify(GlobalState);
+            const payload = JSON.stringify(GlobalState);
+            const checksum = this._generateChecksum(payload);
+            const data = JSON.stringify({ payload, checksum });
             localStorage.setItem('InkImmortalSave_v1', data);
             console.log("=== [系統] 自動存檔成功！ ===");
         } catch (e) {
@@ -15,9 +27,21 @@ export const SaveManager = {
         try {
             const data = localStorage.getItem('InkImmortalSave_v1');
             if (data) {
-                const parsed = JSON.parse(data);
-                // 複製儲存的狀態到實例中
-                Object.assign(GlobalState, parsed);
+                const parsedContainer = JSON.parse(data);
+                
+                // 相容舊有沒加 checksum 的存檔，或是做嚴格攔截
+                if (parsedContainer.checksum) {
+                    const verifyHash = this._generateChecksum(parsedContainer.payload);
+                    if (verifyHash !== parsedContainer.checksum) {
+                        console.error("[系統警告] 存檔資料遭受竄改，校驗碼不匹配！");
+                        return false;
+                    }
+                    Object.assign(GlobalState, JSON.parse(parsedContainer.payload));
+                } else {
+                    // 若是舊存檔格式直接 parse
+                    Object.assign(GlobalState, parsedContainer);
+                }
+
                 console.log("=== [系統] 讀取存檔成功！ ===");
                 return true;
             }

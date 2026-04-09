@@ -19,6 +19,7 @@ export class BossEntity {
         this.scene = scene;
         this.sprite = sprite;
         this.state = state;
+        this.createInkParticleSystem();
     }
 
     public checkAndHandlePhaseTransition() {
@@ -41,11 +42,6 @@ export class BossEntity {
         // Visual: Camera shake
         this.scene.cameras.main.shake(500, 0.01);
 
-        // Audio: BGM Low-pass Filter if color drops < 30
-        if (targetColorValue < 30) {
-            this.applyBGMLowPassFilter();
-        }
-
         // Audio: SFX
         if (this.scene.cache.audio.exists('SE_INK_SPLASH')) {
             this.scene.sound.play('SE_INK_SPLASH', { volume: 0.8 });
@@ -67,9 +63,9 @@ export class BossEntity {
             }
         });
 
-        // Initialize particles if entering Frenzy (or Ink Stained)
-        if (this.currentPhase === BossPhase.FRENZY && !this.inkEmitter) {
-            this.createInkParticleSystem();
+        // Start particles if entering Frenzy (or Ink Stained)
+        if (this.currentPhase === BossPhase.FRENZY && this.inkEmitter) {
+            this.inkEmitter.start();
         }
     }
 
@@ -91,7 +87,8 @@ export class BossEntity {
             scale: { start: 1, end: 0 },
             alpha: { start: 0.8, end: 0 },
             blendMode: 'MULTIPLY',
-            frequency: 100
+            frequency: 100,
+            emitting: false // Pooling: 預設關閉，由外部觸發
         });
         
         // Depth adjustment so it renders properly visually
@@ -110,15 +107,5 @@ export class BossEntity {
         this.inkEmitter.frequency = freqMultiplier;
     }
 
-    private applyBGMLowPassFilter() {
-        // Mocking BGM filter logic assuming WebAudio SoundManager since typical usage may vary
-        // Adding low-pass filter effect structurally. 
-        const soundManager = this.scene.sound as Phaser.Sound.WebAudioSoundManager;
-        if (soundManager && soundManager.context) {
-             console.log("Applying low-pass filter to BGM conceptually.");
-             // E.g., setting master volume or actual filter node if active
-        } else {
-             console.warn("WebAudio context not available for BGM filtering.");
-        }
-    }
+
 }

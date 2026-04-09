@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import { GlobalState, updateStateAndLog } from '../state/GlobalState';
 import { SaveManager } from '../state/SaveManager';
 import { BossEntity } from '../core/BossEntity';
+import { QuestManager } from '../systems/QuestManager';
+import { ImmersionManager } from '../systems/ImmersionManager';
+import { SuYaoAI } from '../core/SuYaoAI';
+import { BondManager } from '../systems/BondManager';
+import { UIManager } from '../systems/UIManager';
+import { ComboManager, SKILL_DB, SkillDefinition } from '../core/ComboManager';
+import { BalanceManager, LootItem } from '../systems/BalanceManager';
 
 interface BattleUnit {
     state: any; 
@@ -22,9 +29,11 @@ export class BattleScene extends Phaser.Scene {
     private mainLayer!: Phaser.GameObjects.Container;
     private colorMatrixFX!: Phaser.FX.ColorMatrix;
 
-    private btnAttack!: Phaser.GameObjects.Text;
-    private btnItem!: Phaser.GameObjects.Text;
+    private btnAttack!: Phaser.GameObjects.Container;
+    private btnItem!: Phaser.GameObjects.Container;
+    private btnLink!: Phaser.GameObjects.Container;
     private bossEntity!: BossEntity;
+    private suyaoAI!: SuYaoAI;
 
     constructor() {
         super({ key: 'BattleScene' });
@@ -36,6 +45,7 @@ export class BattleScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor('#2c3e50');
         this.cameras.main.fadeIn(500);
         this.colorMatrixFX = this.cameras.main.postFX.addColorMatrix();
+        ImmersionManager.bindScene(this);
 
         const { width, height } = this.cameras.main;
 
@@ -51,6 +61,7 @@ export class BattleScene extends Phaser.Scene {
         this.tweens.add({ targets: enemySprite, y: enemySprite.y + 5, yoyo: true, repeat: -1, duration: 1200 });
 
         this.bossEntity = new BossEntity(this, enemySprite, GlobalState.enemy);
+        this.suyaoAI = new SuYaoAI(this);
 
         this.mainLayer.add([playerSprite, enemySprite]);
 
@@ -58,6 +69,18 @@ export class BattleScene extends Phaser.Scene {
             { state: GlobalState.player, sprite: playerSprite, ag: 0, isPlayer: true, hpBarBg: this.add.graphics(), hpBarGhost: this.add.graphics(), hpBarFill: this.add.graphics(), lastHpRatio: 1 },
             { state: GlobalState.enemy, sprite: enemySprite, ag: 0, isPlayer: false, hpBarBg: this.add.graphics(), hpBarGhost: this.add.graphics(), hpBarFill: this.add.graphics(), lastHpRatio: 1 }
         ];
+
+        // 憐憫機制 (Pity System)：若失敗超過 3 次，賦予守護 Buff
+        if (GlobalState.bossFailCount >= 3) {
+            updateStateAndLog(s => {
+                const buffAmount = Math.floor(s.player.maxHp * 0.2);
+                s.player.hp = Math.min(s.player.maxHp, s.player.hp + buffAmount);
+            });
+            const pityText = this.add.text(width * 0.5, height * 0.4, '【蘇瑤的守護】生命值恢復 20%', { fontSize: '28px', color: '#ffaaaa', strokeThickness: 4 }).setOrigin(0.5);
+            this.tweens.add({ targets: pityText, y: pityText.y - 50, alpha: 0, delay: 2000, duration: 1000, onComplete: () => pityText.destroy() });
+            GlobalState.bossFailCount = 0; // 重置
+        }
+
         this.units.forEach(u => {
             u.lastHpRatio = u.state.hp / Math.max(1, u.state.maxHp);
             this.mainLayer.add([u.hpBarBg, u.hpBarGhost, u.hpBarFill]);
@@ -72,20 +95,27 @@ export class BattleScene extends Phaser.Scene {
         const { width, height } = this.cameras.main;
         this.uiContainer = this.add.container(0, 0);
 
-        const panel = this.add.graphics();
-        panel.fillStyle(0x111111, 0.9);
-        panel.fillRect(0, height * 0.75, width, height * 0.25);
+        const panel = UIManager.createInkWindow(this, 0, height * 0.75, width, height * 0.25);
         this.uiContainer.add(panel);
 
         this.uiContainer.add(this.add.text(width * 0.6, height * 0.78, '沈雲', { fontSize: '22px', color: '#fff', fontStyle: 'bold' }));
 
-        this.btnAttack = this.add.text(80, height * 0.78, '> 普通攻擊', { fontSize: '24px', color: '#fff', fontFamily: 'monospace' }).setInteractive({ useHandCursor: true });
-        this.btnAttack.on('pointerdown', () => this.handlePlayerAttack());
-        
-        this.btnItem = this.add.text(80, height * 0.84, '> 使用物品', { fontSize: '24px', color: '#fff', fontFamily: 'monospace' }).setInteractive({ useHandCursor: true });
-        this.btnItem.on('pointerdown', () => this.handlePlayerItem());
+        this.btnAttack = UIManager.createInkButton(this, 150, height * 0.82, '流雲·疾', () => this.handlePlayerSkill('skill_swift'));
+        this.btnItem = UIManager.createInkButton(this, 300, height * 0.82, '流雲·炎', () => this.handlePlayerSkill('skill_fire'));
 
-        this.uiContainer.add([this.btnAttack, this.btnItem]);
+        this.btnLink = UIManager.createInkButton(this, width * 0.8, height * 0.82, '[墨契: 揮毫]', () => {
+             if (this.isAnimating) return;
+             this.setUIVisible(false);
+             this.isAnimating = true;
+             BondManager.executeUltimate(this, () => {
+                  this.isAnimating = false;
+                  this.activeUnit = null;
+                  this.checkWinCondition();
+             });
+        });
+        this.btnLink.setVisible(false);
+
+        this.uiContainer.add([this.btnAttack, this.btnItem, this.btnLink]);
         this.setUIVisible(false);
     }
 
@@ -118,6 +148,8 @@ export class BattleScene extends Phaser.Scene {
 
     update() {
         this.colorMatrixFX.grayscale(1 - (GlobalState.worldColorValue / 100));
+
+        this.btnLink.setVisible(BondManager.isFull() && this.activeUnit?.isPlayer === true);
 
         if (this.bossEntity) {
             this.bossEntity.updateInkParticles();
@@ -153,11 +185,28 @@ export class BattleScene extends Phaser.Scene {
         }
     }
 
-    handlePlayerAttack() {
+    handlePlayerSkill(skillId: string) {
         this.setUIVisible(false);
         const playerUnit = this.units.find(u => u.isPlayer)!;
         const enemyUnit = this.units.find(u => !u.isPlayer)!;
-        this.executeAttack(playerUnit, enemyUnit);
+        
+        let targetSkill = SKILL_DB[skillId];
+        ComboManager.recordSkill(skillId);
+        
+        const comboSkill = ComboManager.checkComboAndConsume();
+        let isCombo = false;
+        
+        if (comboSkill) {
+             targetSkill = comboSkill;
+             isCombo = true;
+             
+             // 畫面提示 Combo 觸發
+             const txt = this.add.text(playerUnit.sprite.x, playerUnit.sprite.y - 120, `筆意爆發：${comboSkill.name}！`, { fontSize: '30px', color: '#ffaaaa', fontStyle: 'bold', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5);
+             this.mainLayer.add(txt);
+             this.tweens.add({ targets: txt, scale: 1.5, alpha: 0, duration: 1500, ease: 'Power2', onComplete: () => txt.destroy() });
+        }
+
+        this.executeAttack(playerUnit, enemyUnit, targetSkill, isCombo);
     }
 
     handlePlayerItem() {
@@ -189,18 +238,33 @@ export class BattleScene extends Phaser.Scene {
         }
     }
 
-    executeAttack(attacker: BattleUnit, defender: BattleUnit) {
+    executeAttack(attacker: BattleUnit, defender: BattleUnit, skill?: SkillDefinition, isCombo: boolean = false) {
         this.isAnimating = true;
         const startX = attacker.sprite.x;
         const targetX = defender.isPlayer ? defender.sprite.x + 60 : defender.sprite.x - 60;
+
+        let frameCount = 0;
 
         this.tweens.add({
             targets: attacker.sprite,
             x: targetX,
             duration: 200,
             ease: 'Power2',
+            onUpdate: () => {
+                frameCount++;
+                // 水系高速技能或 Combo 時產生殘影 (Ghost Trail)
+                if (frameCount % 2 === 0 && (skill?.type === 'water' || isCombo)) {
+                     const ghost = this.add.sprite(attacker.sprite.x, attacker.sprite.y, attacker.sprite.texture.key);
+                     ghost.setOrigin(0.5, 1).setScale(0.8).setTintFill(0x88ccff).setAlpha(0.6);
+                     ghost.flipX = attacker.sprite.flipX; // 同步朝向
+                     this.mainLayer.addAt(ghost, 0); // 放在較底層
+                     this.tweens.add({
+                          targets: ghost, alpha: 0, duration: 300, onComplete: () => ghost.destroy()
+                     });
+                }
+            },
             onComplete: () => {
-                this.applyImpact(attacker, defender);
+                this.applyImpact(attacker, defender, skill, isCombo);
                 
                 this.time.delayedCall(250, () => {
                     this.tweens.add({
@@ -209,9 +273,18 @@ export class BattleScene extends Phaser.Scene {
                         duration: 300,
                         ease: 'Cubic.Out',
                         onComplete: () => {
-                            this.isAnimating = false;
-                            this.activeUnit = null; 
-                            this.checkWinCondition();
+                            if (attacker.isPlayer) {
+                                // 評估 AI 連動
+                                this.suyaoAI.evaluateAction(attacker.state.atk, () => {
+                                    this.isAnimating = false;
+                                    this.activeUnit = null; 
+                                    this.checkWinCondition();
+                                });
+                            } else {
+                                this.isAnimating = false;
+                                this.activeUnit = null; 
+                                this.checkWinCondition();
+                            }
                         }
                     });
                 });
@@ -219,15 +292,47 @@ export class BattleScene extends Phaser.Scene {
         });
     }
 
-    applyImpact(attacker: BattleUnit, defender: BattleUnit) {
-        let baseDmg = attacker.state.atk - defender.state.def;
-        if (baseDmg < 1) baseDmg = 1;
+    applyImpact(attacker: BattleUnit, defender: BattleUnit, skill?: SkillDefinition, isCombo: boolean = false) {
+        let baseDmg = attacker.state.atk; // 取消舊的線性相減，交給亂數引擎
         
-        let multiplier = 1;
+        let reactionText = '';
+        const attackerLv = attacker.isPlayer ? 5 : 5; // 暫設等值
+        const defenderLv = defender.isPlayer ? 5 : 5;
+        
+        const balanceResult = BalanceManager.calculateDamage(baseDmg, attackerLv, defenderLv, attacker.isPlayer);
+        let finalDmg = balanceResult.dmg;
         let isSuperEffective = false;
+
+        if (balanceResult.isMiss) {
+            const txt = this.add.text(defender.sprite.x, defender.sprite.y - 60, `MISS`, { fontSize: '40px', color: '#aaaaaa', fontStyle: 'italic', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5);
+            this.mainLayer.add(txt);
+            this.tweens.add({ targets: txt, x: txt.x - 20, alpha: 0, duration: 800, onComplete: () => txt.destroy() });
+            
+            // 閃避殘影
+            const ghost = this.add.sprite(defender.sprite.x + 20, defender.sprite.y, defender.sprite.texture.key).setAlpha(0.5);
+            this.mainLayer.addAt(ghost, 0);
+            this.tweens.add({ targets: ghost, x: ghost.x + 30, alpha: 0, duration: 300, onComplete: () => ghost.destroy() });
+            return;
+        }
+
+        // 技能倍率與元素反應
+        let multiplier = 1;
+        if (skill) {
+             multiplier *= skill.powerMultiplier;
+             
+             // 墨蒸反應：若施放火系且目標為水屬性(預設火岩精為火，我們假設被蘇瑤打會上水浸，這裡簡單將 target 視為有水屬特徵來觸發)
+             // 這裡以 ComboManager 代勞核算
+             // 假定如果怪物血量低於 80% 身上可能被上了水浸
+             const hasWater = !defender.isPlayer && ((defender.state.hp / defender.state.maxHp) < 0.8);
+             const reaction = ComboManager.applyElementalReaction(skill.type, hasWater);
+             if (reaction.reactionName) {
+                  multiplier *= reaction.multiplier;
+                  reactionText = reaction.reactionName;
+             }
+        }
         
         if (attacker.state.affinity === 'Water' && defender.state.affinity === 'Fire') {
-            multiplier = 1.5;
+            multiplier *= 1.5;
             isSuperEffective = true;
         }
 
@@ -242,8 +347,17 @@ export class BattleScene extends Phaser.Scene {
             multiplier *= (1 + (100 - GlobalState.worldColorValue) / 100);
         }
 
-        const finalDmg = Math.floor(baseDmg * multiplier * Phaser.Math.FloatBetween(0.9, 1.1));
+        finalDmg = Math.floor(finalDmg * multiplier);
+        if (balanceResult.isCrit) reactionText = reactionText ? `CRIT! ${reactionText}` : 'CRIT!';
         
+        // 打擊停頓 (Hit-Stop Frame Freeze) 演出
+        if (isCombo || reactionText || isSuperEffective || balanceResult.isCrit) {
+             this.tweens.pauseAll();
+             setTimeout(() => {
+                  if (this && this.tweens) this.tweens.resumeAll();
+             }, 80); // 卡幀 0.08 秒
+        }
+
         defender.state.hp = Math.max(0, defender.state.hp - finalDmg);
         updateStateAndLog(state => {
             if(defender.isPlayer) state.player.hp = defender.state.hp;
@@ -254,16 +368,23 @@ export class BattleScene extends Phaser.Scene {
             this.bossEntity.checkAndHandlePhaseTransition();
         }
 
-        this.triggerDamageVisuals(defender, finalDmg, isSuperEffective, isFireTalentTriggered);
+        // 動態受擊硬直 (Hit Stun)
+        const stunRatio = finalDmg / defender.state.maxHp;
+        this.triggerDamageVisuals(defender, finalDmg, isSuperEffective, isFireTalentTriggered, reactionText, stunRatio);
     }
 
-    triggerDamageVisuals(defender: BattleUnit, dmg: number, isSuperEffective: boolean, fireTalent: boolean) {
+    triggerDamageVisuals(defender: BattleUnit, dmg: number, isSuperEffective: boolean, fireTalent: boolean, reactionText: string = '', stunRatio: number = 0) {
         const origX = defender.sprite.x;
         const origY = defender.sprite.y;
+        
+        // Stun 烈度越高，抖動幅度跟次數越扯
+        const shakeDist = 8 + (stunRatio * 40);
+        const shakeRepeats = 3 + Math.floor(stunRatio * 5);
+
         this.tweens.add({
             targets: defender.sprite,
-            x: origX + Phaser.Math.Between(-8, 8), y: origY + Phaser.Math.Between(-8, 8),
-            yoyo: true, repeat: 3, duration: 40,
+            x: origX + Phaser.Math.Between(-shakeDist, shakeDist), y: origY + Phaser.Math.Between(-shakeDist, shakeDist),
+            yoyo: true, repeat: shakeRepeats, duration: 40,
             onComplete:() => { defender.sprite.setPosition(origX, origY); }
         });
 
@@ -277,19 +398,28 @@ export class BattleScene extends Phaser.Scene {
             onComplete: () => spark.destroy()
         });
 
-        // 烈火天賦專屬視覺：紫色爆發數字
-        let dmgColor = isSuperEffective ? '#ffd700' : '#ff3333';
+        // 傷害飄字動態拋物線
+        let dmgColor = isSuperEffective || reactionText ? '#ffd700' : '#ff3333';
         if (fireTalent) dmgColor = '#ff00ff';
+        
+        let displayStr = `-${dmg}`;
+        if (reactionText) displayStr = `${reactionText} ${displayStr}`;
 
-        const dmgText = this.add.text(defender.sprite.x, defender.sprite.y - defender.sprite.displayHeight - 20, `-${dmg}`, {
-            fontSize: isSuperEffective || fireTalent ? '40px' : '32px',
+        const dmgText = this.add.text(defender.sprite.x, defender.sprite.y - defender.sprite.displayHeight - 20, displayStr, {
+            fontSize: isSuperEffective || fireTalent || reactionText ? '50px' : '36px',
             color: dmgColor, 
             fontFamily: 'Impact, sans-serif', stroke: '#000', strokeThickness: 5
         }).setOrigin(0.5);
         this.mainLayer.add(dmgText);
 
+        const targetDmgX = defender.sprite.x + Phaser.Math.Between(-80, 80);
         this.tweens.add({
-            targets: dmgText, y: dmgText.y - 60, alpha: 0, duration: 800, ease: 'Power1',
+            targets: dmgText,
+            x: targetDmgX,
+            y: dmgText.y - 120,
+            alpha: { from: 1, to: 0 },
+            duration: 1000,
+            ease: 'Power1',
             onComplete: () => dmgText.destroy()
         });
 
@@ -321,6 +451,19 @@ export class BattleScene extends Phaser.Scene {
             enemy.sprite.setTintFill(0x888888);
             this.time.delayedCall(1200, () => {
                 enemy.state.hp = enemy.state.maxHp; 
+                QuestManager.setFlag('boss_forest_defeated', true);
+                GlobalState.bossFailCount = 0;
+
+                // 戰利品結算 (假設剛才是墨契揮毫，則 isBondFinisher = true)
+                // 這裡簡化：只要滿墨契結束就視為合擊完成
+                const lootPool: LootItem[] = [
+                    { item: '墨晶 x50', weight: 70 },
+                    { item: '筆靈殘卷 x1', weight: 25 },
+                    { item: '命定墨寶 x1', weight: 5 }
+                ];
+                const drops = BalanceManager.generateLoot(lootPool, BondManager.isFull());
+                console.log("[Loot] 獲得掉落物: ", drops.join(', '));
+                
                 SaveManager.saveGame(); // 戰鬥勝利存檔
                 this.cameras.main.fadeOut(800, 0, 0, 0, (cam: any, prog: number) => {
                     if (prog === 1) this.scene.start('MainScene');
@@ -332,9 +475,12 @@ export class BattleScene extends Phaser.Scene {
         const player = this.units.find(u => u.isPlayer)!;
         if (player.state.hp <= 0) {
             player.sprite.setTintFill(0xff0000);
+            updateStateAndLog(s => s.bossFailCount += 1); // 增加計敗數
             this.time.delayedCall(1500, () => {
                 player.state.hp = player.state.maxHp;
-                this.scene.start('TitleScene'); // 死亡回到標題
+                this.cameras.main.fadeOut(800, 0, 0, 0, (cam: any, prog: number) => {
+                    if (prog === 1) this.scene.start('SummaryScene', { isGameOver: true });
+                });
             });
         }
     }

@@ -1,10 +1,18 @@
-import { EntityStats, Item } from '../types/game';
+import { EntityStats, Item, Quest } from '../types/game';
+import { GameSignals, Events } from '../events/GameSignals';
+
+let _worldColorValue = 100;
+let _visionState = false;
 
 interface IGlobalState {
     player: EntityStats;
     enemy: EntityStats;
     inventory: Item[];
     worldColorValue: number; // 0~100，低於閥值時進入黑白化與增強敵方
+    visionState: boolean; // 是否開啟靈界視覺 (蘇瑤之眼)
+    storyFlags: Record<string, boolean>;
+    activeQuests: Quest[];
+    bossFailCount: number; // 戰敗憐憫計數器
 }
 
 export const GlobalState: IGlobalState = {
@@ -22,7 +30,8 @@ export const GlobalState: IGlobalState = {
         luk: 5,
         affinity: 'Water',
         talentPoints: 2, 
-        activeTalents: []
+        activeTalents: [],
+        pos: { x: 200, y: 300, facing: 'down' }
     },
     enemy: {
         id: 'monster_01',
@@ -44,7 +53,42 @@ export const GlobalState: IGlobalState = {
         { id: 'item_clearcolor', type: 'CONSUMABLE', price: 50, effect: (target) => { GlobalState.worldColorValue = 100; } },
         { id: 'item_healhp', type: 'CONSUMABLE', price: 20, effect: (target) => { target.hp = Math.min(target.maxHp, target.hp + 50); } }
     ],
-    worldColorValue: 100 // 初始為滿色
+    get worldColorValue() {
+        return _worldColorValue;
+    },
+    set worldColorValue(newVal: number) {
+        if (_worldColorValue !== newVal) {
+            const oldVal = _worldColorValue;
+            _worldColorValue = newVal;
+            GameSignals.emit(Events.COLOR_VALUE_CHANGED, newVal, oldVal);
+        }
+    },
+    get visionState() {
+        return _visionState;
+    },
+    set visionState(newVal: boolean) {
+        if (_visionState !== newVal) {
+            _visionState = newVal;
+            GameSignals.emit(Events.VISION_STATE_CHANGED, newVal);
+        }
+    },
+    storyFlags: {
+        talked_to_suyao: false,
+        boss_forest_defeated: false
+    },
+    activeQuests: [
+        {
+            id: 'q_001_intro',
+            title: '墨染初現',
+            status: 'ACTIVE',
+            steps: [
+                { description: '在竹林中與蘇瑤交談', isDone: false, triggerFlag: 'talked_to_suyao' },
+                { description: '擊敗墨化的守林人', isDone: false, triggerFlag: 'boss_forest_defeated' }
+            ],
+            rewards: { talentPoints: 1 } // 解鎖第一層流雲
+        }
+    ],
+    bossFailCount: 0
 };
 
 /**

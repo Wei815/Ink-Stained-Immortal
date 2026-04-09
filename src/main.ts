@@ -4,6 +4,9 @@ import { MainScene } from './scenes/MainScene';
 import { BattleScene } from './scenes/BattleScene';
 import { PuzzleScene } from './scenes/PuzzleScene';
 import { TalentScene } from './scenes/TalentScene';
+import { SummaryScene } from './scenes/SummaryScene';
+import { BootScene } from './scenes/BootScene';
+import { PerformanceMonitor } from './systems/PerformanceMonitor';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
@@ -11,7 +14,11 @@ const config: Phaser.Types.Core.GameConfig = {
     height: 600,
     parent: 'game-container',
     backgroundColor: '#222222',
-    scene: [TitleScene, MainScene, BattleScene, PuzzleScene, TalentScene],
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    scene: [BootScene, TitleScene, MainScene, BattleScene, PuzzleScene, TalentScene, SummaryScene],
     physics: {
         default: 'arcade',
         arcade: {
@@ -21,4 +28,5 @@ const config: Phaser.Types.Core.GameConfig = {
     }
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+PerformanceMonitor.init(game);

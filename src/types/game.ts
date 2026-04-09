@@ -17,20 +17,26 @@ export interface EntityStats {
     affinity: 'Gold' | 'Wood' | 'Water' | 'Fire' | 'Earth';
     talentPoints?: number;
     activeTalents?: string[];
+    pos?: { x: number, y: number, facing: string };
 }
 
 /** 
- * @schema QuestNode
- * 任務與劇情旗標管理
- * (結合第四章：NPC 命運與道德選擇)
+ * @schema Quest
+ * 任務與劇情管理系統
  */
-export interface QuestNode {
+export interface QuestStep {
+    description: string;
+    isDone: boolean;
+    triggerFlag: string;
+}
+
+export interface Quest {
     id: string;
     title: string;
     status: 'NOT_STARTED' | 'ACTIVE' | 'COMPLETED';
-    requirements: { flagRequired: string; value: boolean }[];
-    rewards: { exp: number; items: string[] };
-    // 新增：劇情選擇分支紀錄，影響 NPC 命運與大結局
+    steps: QuestStep[];
+    rewards: { talentPoints?: number; hpMax?: number; items?: string[] };
+    // 預留第四章道德選項
     moralChoice?: 'SACRIFICE_NATURE' | 'PRESERVE_BALANCE'; 
     npcFateImpact?: { npcId: string; state: 'SURVIVED' | 'CORRUPTED' }[];
 }

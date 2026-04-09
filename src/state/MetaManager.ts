@@ -6,6 +6,7 @@ export interface IMetaState {
     karmaPoints: number;
     unlockedTalents: string[];
     unlockedLore: string[]; // reserved for 殘卷/圖鑑
+    completedEndings: string[]; // 紀錄已完成的結局 ID
 }
 
 class MetaManagerService {
@@ -14,7 +15,8 @@ class MetaManagerService {
         playthroughCount: 1,
         karmaPoints: 0,
         unlockedTalents: [],
-        unlockedLore: []
+        unlockedLore: [],
+        completedEndings: []
     };
 
     constructor() {
@@ -55,6 +57,13 @@ class MetaManagerService {
             }
         });
         this.saveMeta();
+    }
+
+    public recordEnding(endingId: string) {
+        if (!this.state.completedEndings.includes(endingId)) {
+            this.state.completedEndings.push(endingId);
+            this.saveMeta();
+        }
     }
 
     /**

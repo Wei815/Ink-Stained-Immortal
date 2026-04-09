@@ -65,7 +65,7 @@ class ImmersionManagerService {
             }
         } else {
             if (this.visionFX) {
-                this.currentScene.cameras.main.postFX.remove(this.visionFX);
+                this.currentScene.cameras.main.postFX.remove(this.visionFX as any);
                 this.visionFX = null;
             }
         }
@@ -194,6 +194,31 @@ class ImmersionManagerService {
         });
     }
 
+    private bgmMode: 'EXPLORE' | 'BATTLE' = 'EXPLORE';
+
+    public setBgmMode(mode: 'EXPLORE' | 'BATTLE') {
+        if (this.bgmMode === mode) return;
+        this.bgmMode = mode;
+        console.log(`[Immersion] Switching BGM Mode to: ${mode}`);
+        
+        // 這裡可以實現實際的音軌切換邏輯
+        const soundManager = this.currentScene?.sound;
+    }
+
+    /**
+     * 播放音效 (SE)
+     */
+    public playSE(key: string, config?: any) {
+        this.currentScene?.sound.play(key, config);
+    }
+
+    /**
+     * 停止所有 BGM
+     */
+    public stopAllAudio() {
+        this.currentScene?.sound.stopAll();
+    }
+
     private updateAmbientAudio(colorValue: number) {
          if (!this.currentScene) return;
          
@@ -209,7 +234,7 @@ class ImmersionManagerService {
                  }
              }
          } else {
-             if (this.ambientSound && this.ambientSound.stop) {
+             if (this.ambientSound) {
                  const track = this.ambientSound;
                  this.currentScene.tweens.add({
                      targets: track, volume: 0, duration: 1500,

@@ -4,11 +4,11 @@ import { MetaManager } from '../state/MetaManager';
 
 export interface InteractiveEntity {
     id: string;
-    type: 'LoreFragment' | 'DriedWell' | 'ElementalSwitch';
+    type: 'LoreFragment' | 'DriedWell' | 'ElementalSwitch' | 'Bush';
     x: number;
     y: number;
     radius: number;
-    sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Arc;
+    sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle;
     data?: any;
     isConsumed?: boolean;
 }
@@ -55,6 +55,20 @@ class InteractionManagerService {
                      this.showFloatingText('魔力流失', '#aa00ff', ent.x, ent.y);
                  }
             }
+
+            // 交互式草叢：自動觸發 (走過去就拾取)
+            if (ent.type === 'Bush' && dist < ent.radius) {
+                const shards = ent.data?.shards || 1;
+                this.showFloatingText(`+${shards} 墨晶`, '#00ff00', ent.x, ent.y);
+                updateStateAndLog(s => s.inkShards += shards);
+                ent.isConsumed = true;
+                
+                // 踏碎特效
+                this.scene.tweens.add({
+                    targets: ent.sprite, scale: 2, alpha: 0, duration: 400,
+                    onComplete: () => this.destroyEntity(ent.id)
+                });
+            }
         }
     }
 
@@ -99,9 +113,9 @@ class InteractionManagerService {
                         s.player.hp = Math.min(s.player.maxHp, s.player.hp + 50);
                     });
                     
-                    if (ent.sprite instanceof Phaser.GameObjects.Arc) {
+                    if (ent.sprite instanceof Phaser.GameObjects.Arc || ent.sprite instanceof Phaser.GameObjects.Rectangle) {
                         ent.sprite.setFillStyle(0x00ccff); // 變藍色溫泉
-                    } else {
+                    } else if (ent.sprite.setTint) {
                         ent.sprite.setTint(0x00ccff);
                     }
                     

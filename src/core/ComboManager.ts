@@ -1,5 +1,5 @@
-import Phaser from 'phaser';
 import { GlobalState, updateStateAndLog } from '../state/GlobalState';
+import { ArrayManager } from '../systems/ArrayManager';
 
 export interface SkillDefinition {
     id: string;
@@ -44,7 +44,8 @@ class ComboManagerService {
         // 五行連鎖：墨蒸
         if (skillType === 'fire' && targetHasWater) {
             updateStateAndLog(s => s.worldColorValue = Math.max(0, s.worldColorValue - 5));
-            return { multiplier: 2.0, reactionName: '墨蒸' };
+            const baseMult = ArrayManager.getElementalMultiplier(); 
+            return { multiplier: baseMult * 1.5, reactionName: '墨蒸' };
         }
         return { multiplier: 1.0, reactionName: '' };
     }

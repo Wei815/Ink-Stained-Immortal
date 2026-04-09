@@ -6,6 +6,7 @@ import { PuzzleScene } from './scenes/PuzzleScene';
 import { TalentScene } from './scenes/TalentScene';
 import { SummaryScene } from './scenes/SummaryScene';
 import { BootScene } from './scenes/BootScene';
+import { CinematicScene } from './scenes/CinematicScene';
 import { PerformanceMonitor } from './systems/PerformanceMonitor';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -18,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    scene: [BootScene, TitleScene, MainScene, BattleScene, PuzzleScene, TalentScene, SummaryScene],
+    scene: [BootScene, TitleScene, CinematicScene, MainScene, BattleScene, PuzzleScene, TalentScene, SummaryScene],
     physics: {
         default: 'arcade',
         arcade: {

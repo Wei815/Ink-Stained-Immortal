@@ -2,6 +2,23 @@ import Phaser from 'phaser';
 import { GlobalState } from '../state/GlobalState';
 
 class UIManagerService {
+    private graphicsPool: Phaser.GameObjects.Graphics[] = [];
+
+    private getGraphics(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
+        const g = this.graphicsPool.pop();
+        if (g) {
+            scene.add.existing(g);
+            return g;
+        }
+        return scene.add.graphics();
+    }
+
+    private releaseGraphics(g: Phaser.GameObjects.Graphics) {
+        g.clear();
+        g.removeFromDisplayList();
+        this.graphicsPool.push(g);
+    }
+
     /**
      * 繪製一個具備「宣紙底色」與「動態墨筆描邊」的視窗
      */
@@ -9,13 +26,13 @@ class UIManagerService {
         const container = scene.add.container(x, y);
 
         // 1. 假宣紙底色 (利用圖案重疊與微微噪點模擬)
-        const bg = scene.add.graphics();
+        const bg = this.getGraphics(scene);
         bg.fillStyle(0xf0ece1, 0.95);
         bg.fillRoundedRect(0, 0, w, h, 8);
         container.add(bg);
 
         // 利用細微的雜點 Graphics 當作紋理 (效能稍換取質感)
-        const noise = scene.add.graphics();
+        const noise = this.getGraphics(scene);
         noise.fillStyle(0xddccbb, 0.4);
         for(let i=0; i<30; i++) {
             noise.fillCircle(Phaser.Math.Between(0, w), Phaser.Math.Between(0, h), Phaser.Math.Between(1, 3));
@@ -23,7 +40,7 @@ class UIManagerService {
         container.add(noise);
 
         // 2. 動態畫線邊框 (InkStroke)
-        const strokeGraphics = scene.add.graphics();
+        const strokeGraphics = this.getGraphics(scene);
         container.add(strokeGraphics);
 
         let progress = 0;
@@ -33,7 +50,7 @@ class UIManagerService {
             duration: 800,
             ease: 'Power2',
             onUpdate: (tween) => {
-                progress = tween.getValue() / 100;
+                progress = (tween?.getValue() ?? 0) / 100;
                 strokeGraphics.clear();
                 strokeGraphics.lineStyle(4, 0x111111, 0.8);
                 strokeGraphics.beginPath();
@@ -104,8 +121,8 @@ class UIManagerService {
         let rippleGraphics: Phaser.GameObjects.Graphics | null = null;
 
         hitArea.on('pointerover', () => {
-            if (rippleGraphics) rippleGraphics.destroy();
-            rippleGraphics = scene.add.graphics();
+            if (rippleGraphics) this.releaseGraphics(rippleGraphics);
+            rippleGraphics = this.getGraphics(scene);
             rippleGraphics.fillStyle(0x000000, 0.2);
             rippleGraphics.fillCircle(0, 0, txt.width/2 + 20);
             container.addAt(rippleGraphics, 0);
@@ -121,7 +138,10 @@ class UIManagerService {
 
         hitArea.on('pointerout', () => {
             if (rippleTween) rippleTween.stop();
-            if (rippleGraphics) rippleGraphics.destroy();
+            if (rippleGraphics) {
+                this.releaseGraphics(rippleGraphics);
+                rippleGraphics = null;
+            }
             txt.setScale(1.0);
         });
 
@@ -130,7 +150,26 @@ class UIManagerService {
         });
 
         container.add([hitArea, txt]);
+        
+        // Clean up when destroyed
+        container.on('destroy', () => {
+             if (rippleGraphics) this.releaseGraphics(rippleGraphics);
+        });
+
         return container;
+    }
+
+    /**
+     * 套用選單模糊特效
+     */
+    public applyMenuFX(scene: Phaser.Scene) {
+        scene.cameras.main.postFX.addBlur(2);
+        // Dynamic grayscale
+        scene.cameras.main.postFX.addColorMatrix().grayscale(0.8);
+    }
+
+    public removeMenuFX(scene: Phaser.Scene) {
+        scene.cameras.main.postFX.clear();
     }
 }
 

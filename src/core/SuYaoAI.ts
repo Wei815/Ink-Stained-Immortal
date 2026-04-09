@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GlobalState, updateStateAndLog } from '../state/GlobalState';
 import { BondManager } from '../systems/BondManager';
+import { ArrayManager } from '../systems/ArrayManager';
 
 export class SuYaoAI {
     private scene: Phaser.Scene;
@@ -18,6 +19,20 @@ export class SuYaoAI {
         const cVal = GlobalState.worldColorValue;
 
         let hasActed = false;
+        const hpRatio = pState.hp / Math.max(1, pState.maxHp);
+
+        // 判定 0: 陣法發動 (每場戰鬥僅限一次，或是當陣法消失後重新評估)
+        if (!GlobalState.battleArray && (eState.aiType === 'BOSS' || hpRatio < 0.5)) {
+             hasActed = true;
+             const arrayType = (cVal > 60) ? 'CLEANSING' : 'INK_LOCK';
+             const arrayName = (arrayType === 'CLEANSING') ? '五行清心陣' : '墨守乾坤陣';
+             
+             this.showActionText(`蘇瑤開啟了陣法：[${arrayName}]！`, '#ffff00', () => {
+                 ArrayManager.activateArray(arrayType);
+                 onComplete();
+             });
+             return;
+        }
 
         // 判定 1: 色彩淨化優先 (worldColorValue < 50)
         if (cVal < 50) {
@@ -31,7 +46,6 @@ export class SuYaoAI {
         }
 
         // 判定 2: 守護規則 (玩家血量 < 30%)
-        const hpRatio = pState.hp / Math.max(1, pState.maxHp);
         if (hpRatio < 0.3) {
             hasActed = true;
             // 墨守天賦判定：若有防禦向天賦（例如 tal_earth 或泛指的墨守分支）加強護盾

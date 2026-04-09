@@ -55,7 +55,7 @@ export class BossEntity {
             to: targetColorValue,
             duration: 2000,
             onUpdate: (tween) => {
-                GlobalState.worldColorValue = tween.getValue();
+                GlobalState.worldColorValue = tween.getValue() ?? targetColorValue;
                 this.updateInkParticles();
             },
             onComplete: () => {

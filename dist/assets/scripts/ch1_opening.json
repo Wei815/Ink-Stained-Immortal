@@ -1,0 +1,8 @@
+[
+  { "cmd": "SCREEN_FX", "fxType": "WHITE_OUT", "duration": 2000 },
+  { "cmd": "CAMERA_PAN", "target": { "x": 400, "y": 300 }, "duration": 0, "zoom": 1.5 },
+  { "cmd": "CHAR_SAY", "id": "沈雲", "text": "這裡...是什麼地方？為何草木皆失其色？", "portrait": "portrait_shen_yun" },
+  { "cmd": "CHAR_SAY", "id": "蘇瑤", "text": "沈大哥，小心！那是墨化的先兆！這片竹林的顏色正在被吞噬...", "portrait": "portrait_su_yao_worried" },
+  { "cmd": "CHAR_MOVE", "id": "沈雲", "target": { "x": 600, "y": 450 }, "speed": 150 },
+  { "cmd": "CHAR_SAY", "id": "蘇瑤", "text": "前面那是...筆靈殘卷？它似乎能指引我們找回失落的色彩。去看看吧！", "portrait": "portrait_su_yao_worried" }
+]

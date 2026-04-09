@@ -6,6 +6,7 @@ import { ImmersionManager } from '../systems/ImmersionManager';
 import { MapManager } from '../systems/MapManager';
 import { InteractionManager } from '../systems/InteractionManager';
 import { CutsceneManager, CutsceneCommand } from '../systems/CutsceneManager';
+import { EnemyDatabase } from '../data/EnemyDatabase';
 
 export class MainScene extends Phaser.Scene {
     private player!: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
@@ -35,11 +36,14 @@ export class MainScene extends Phaser.Scene {
         this.colorMatrixFX = this.cameras.main.postFX.addColorMatrix();
         ImmersionManager.bindScene(this);
         MapManager.init(this);
-        InteractionManager.init(this, this.player);
-
         this.player = this.physics.add.sprite(GlobalState.player.pos?.x || 200, GlobalState.player.pos?.y || 300, 'player_xianjian');
         this.player.setDisplaySize(64, 64);
         this.player.body.setSize(64, 64);
+
+        InteractionManager.init(this, this.player);
+
+        // 教學啟動：開場劇情
+        this.checkTutorialStart();
 
         const wallGeom = this.add.rectangle(0, 0, 40, 300, 0x000000, 0.4);
         this.wall = this.physics.add.existing(wallGeom, true) as unknown as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody; 
@@ -90,12 +94,88 @@ export class MainScene extends Phaser.Scene {
                 this.showDebugText(GlobalState.visionState ? '蘇瑤之眼：開啟' : '蘇瑤之眼：關閉');
             });
         }
+    }
+
+    private showDebugText(msg: string) {
+        if (!this.player) return;
+        const txt = this.add.text(this.player.x, this.player.y - 40, msg, { 
+            fontSize: '20px', color: '#ff00ff', stroke: '#000', strokeThickness: 3 
+        }).setOrigin(0.5);
+        this.tweens.add({ targets: txt, y: txt.y - 50, alpha: 0, duration: 1000, onComplete: () => txt.destroy() });
+    }
+
+    private async checkTutorialStart() {
+        if (GlobalState.tutorialStep === 0) {
+            this.inCutscene = true;
+            const script = this.cache.json.get('ch1_opening');
+            await CutsceneManager.play(this, script, { '沈雲': this.player });
+            
+            updateStateAndLog(s => s.tutorialStep = 1);
+            this.inCutscene = false;
+        }
+    }
+
+    private updateTutorialVisuals() {
+        // 第一階段：移動引導
+        if (GlobalState.tutorialStep === 1) {
+            // 在玩家與目標間畫一條淡淡的水墨虛線
+            const graphics = this.add.graphics();
+            graphics.lineStyle(2, 0x000000, 0.3);
+            graphics.beginPath();
+            graphics.moveTo(this.player.x, this.player.y);
+            graphics.lineTo(this.puzzleNode.x, this.puzzleNode.y);
+            graphics.strokePath();
+            // 下一幀銷毀，模擬動態繪製
+            this.time.delayedCall(0, () => graphics.destroy());
+            
+            // 靠近目標時觸發第二階段
+            if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.puzzleNode.x, this.puzzleNode.y) < 100) {
+                 this.triggerPhase2();
+            }
+        }
+
+        // 第二階段：色彩解謎檢測
+        if (GlobalState.tutorialStep === 2 && GlobalState.worldColorValue >= 80) {
+             this.completePhase2();
+        }
+    }
+
+    private async triggerPhase2() {
+        updateStateAndLog(s => s.tutorialStep = 2);
+        this.inCutscene = true;
+        
+        await CutsceneManager.play(this, [
+            { type: 'CHAR_SAY', id: '蘇瑤', text: '沈大哥，前方的路被濃墨封死了！這墨跡太深，我們看不清路徑。', portrait: 'portrait_su_yao_worried' },
+            { type: 'CHAR_SAY', id: '蘇瑤', text: '試著運轉氣息調和此地色彩（按 [=] 鍵增加色彩值），只要色彩度大於 80%，幻霧就會散去！', portrait: 'portrait_su_yao_worried' }
+        ], { '沈雲': this.player });
+        
+        this.inCutscene = false;
+        
+        // 生成視覺上的「墨霧」
+        const fog = this.add.rectangle(this.player.x + 100, this.player.y, 200, 200, 0x000000, 0.8);
+        fog.setName('tutorial_fog');
+        this.tweens.add({ targets: fog, alpha: 0.4, yoyo: true, repeat: -1, duration: 1000 });
+    }
+
+    private async completePhase2() {
+        updateStateAndLog(s => s.tutorialStep = 3);
+        const fog = this.children.getByName('tutorial_fog');
+        if (fog) {
+            this.tweens.add({ targets: fog, alpha: 0, scale: 2, duration: 1000, onComplete: () => fog.destroy() });
+        }
+        
+        this.inCutscene = true;
+        await CutsceneManager.play(this, [
+            { type: 'CHAR_SAY', id: '蘇瑤', text: '成功了！墨色退去，我們趕快通過吧！', portrait: 'portrait_su_yao_worried' }
+        ], { '沈雲': this.player });
+        this.inCutscene = false;
+    }
 
     handleInteract() {
         if (this.inCutscene) return;
 
         // 解謎節點互動優先 (原生)
-        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.puzzleNode.x, this.puzzleNode.y) < 70) {
+        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.puzzleNode.x, this.puzzleNode.y) < 120) {
             this.cameras.main.fadeOut(500, 0, 0, 0, (cam: any, prog: number) => {
                 if (prog === 1) this.scene.start('PuzzleScene');
             });
@@ -107,7 +187,7 @@ export class MainScene extends Phaser.Scene {
 
         // NPC 互動
         const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.npc.x, this.npc.y);
-        if (dist < 60) {
+        if (dist < 100) {
             this.startNPCCutscene();
         }
     }
@@ -142,6 +222,7 @@ export class MainScene extends Phaser.Scene {
         this.colorMatrixFX.grayscale(1 - (GlobalState.worldColorValue / 100));
 
         InteractionManager.update();
+        this.updateTutorialVisuals();
 
         if (this.inCutscene) {
             this.player.setVelocity(0, 0);
@@ -176,8 +257,16 @@ export class MainScene extends Phaser.Scene {
             MapManager.updateChunks(this.player.x, this.player.y);
             this.cameras.main.centerOn(this.player.x, this.player.y);
 
+            // 步行粒子效果
+            if (this.stepsCount % 10 === 0) {
+                 const ink = this.add.circle(this.player.x + Phaser.Math.Between(-10, 10), this.player.y, Phaser.Math.Between(2, 5), 0x000000);
+                 this.tweens.add({ targets: ink, alpha: 0, scale: 2, duration: 600, onComplete: () => ink.destroy() });
+            }
+
+            // 遇敵判定隨機化
+            const encounterChance = (GlobalState.worldColorValue < 30) ? 150 : 300;
             this.stepsCount++;
-            if (this.stepsCount > Phaser.Math.Between(200, 300)) {
+            if (this.stepsCount > Phaser.Math.Between(encounterChance, encounterChance + 100)) {
                 this.triggerBattle();
             }
         }
@@ -186,6 +275,19 @@ export class MainScene extends Phaser.Scene {
     triggerBattle() {
         this.stepsCount = 0;
         this.player.setVelocity(0, 0);
+
+        // 根據色彩值隨機選取怪物
+        const enemyDef = EnemyDatabase.getRandomEnemy(GlobalState.worldColorValue);
+        
+        updateStateAndLog(s => {
+            s.enemy = { ...enemyDef };
+        });
+
+        console.log(`[MainScene] 遇敵！對手為: ${enemyDef.name} (${enemyDef.aiType})`);
+        
+        // 戰鬥前暫停 BGM 
+        ImmersionManager.setBgmMode('BATTLE');
+
         MapManager.sceneTransition('BattleScene', this);
     }
 }

@@ -9,6 +9,11 @@ import { BondManager } from '../systems/BondManager';
 import { UIManager } from '../systems/UIManager';
 import { ComboManager, SKILL_DB, SkillDefinition } from '../core/ComboManager';
 import { BalanceManager, LootItem } from '../systems/BalanceManager';
+import { CutsceneManager } from '../systems/CutsceneManager';
+import { SkillVFXManager } from '../systems/SkillVFXManager';
+import { ArrayManager } from '../systems/ArrayManager';
+import { EliteAI } from '../core/EliteAI';
+import { EquipmentManager } from '../systems/EquipmentManager';
 
 interface BattleUnit {
     state: any; 
@@ -19,6 +24,7 @@ interface BattleUnit {
     hpBarGhost: Phaser.GameObjects.Graphics;
     hpBarFill: Phaser.GameObjects.Graphics;
     lastHpRatio: number;
+    telegraphIcon?: Phaser.GameObjects.Text;
 }
 
 export class BattleScene extends Phaser.Scene {
@@ -34,6 +40,8 @@ export class BattleScene extends Phaser.Scene {
     private btnLink!: Phaser.GameObjects.Container;
     private bossEntity!: BossEntity;
     private suyaoAI!: SuYaoAI;
+    private arrayFloorSprite!: Phaser.GameObjects.Sprite;
+    private arrayTurnsText!: Phaser.GameObjects.Text;
 
     constructor() {
         super({ key: 'BattleScene' });
@@ -46,10 +54,17 @@ export class BattleScene extends Phaser.Scene {
         this.cameras.main.fadeIn(500);
         this.colorMatrixFX = this.cameras.main.postFX.addColorMatrix();
         ImmersionManager.bindScene(this);
+        SkillVFXManager.init(this);
 
         const { width, height } = this.cameras.main;
 
         this.mainLayer = this.add.container(0, 0);
+
+        // 陣法底盤層
+        this.arrayFloorSprite = this.add.sprite(width / 2, height * 0.65, 'vfx_lotus').setScale(1.2).setAlpha(0).setDepth(0);
+        this.mainLayer.add(this.arrayFloorSprite);
+        this.arrayTurnsText = this.add.text(width / 2, height * 0.45, '', { fontSize: '24px', color: '#00ffff', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(2000).setAlpha(0);
+        this.mainLayer.add(this.arrayTurnsText);
 
         const playerSprite = this.add.sprite(width * 0.75, height * 0.65, 'swordsman');
         playerSprite.setOrigin(0.5, 1).setScale(0.8);
@@ -58,6 +73,13 @@ export class BattleScene extends Phaser.Scene {
         const enemySprite = this.add.sprite(width * 0.25, height * 0.65, 'monster');
         enemySprite.setOrigin(0.5, 1).setScale(0.8);
         if (enemySprite.width > 0) enemySprite.flipX = false;
+        
+        // 精英怪初始化
+        if (GlobalState.enemy.isElite) {
+             enemySprite.setScale(1.2);
+             SkillVFXManager.createEliteAura(enemySprite);
+        }
+        
         this.tweens.add({ targets: enemySprite, y: enemySprite.y + 5, yoyo: true, repeat: -1, duration: 1200 });
 
         this.bossEntity = new BossEntity(this, enemySprite, GlobalState.enemy);
@@ -88,6 +110,15 @@ export class BattleScene extends Phaser.Scene {
 
         this.createUI();
         this.setupCameras(width, height);
+        // 套裝共鳴檢查
+        const resonanceElement = EquipmentManager.checkResonance();
+        if (resonanceElement) {
+             const colors = { 'FIRE': '#ff0000', 'WATER': '#00ffff', 'WOOD': '#00ff00', 'GOLD': '#ffff00', 'EARTH': '#885500' };
+             this.showFloatingNote(`【${resonanceElement}系共鳴】`, colors[resonanceElement as keyof typeof colors] || '#fff', playerSprite.x, playerSprite.y - 120);
+             playerSprite.setData('resonanceShield', true);
+             // 呼叫 VFX (後續實作)
+        }
+
         this.updateHPRedraw();
     }
 
@@ -144,6 +175,19 @@ export class BattleScene extends Phaser.Scene {
         const eRatio = eu.state.hp / Math.max(1, eu.state.maxHp);
         eu.hpBarBg.clear().fillStyle(0x330000).fillRect(ex, ey, 100, 8);
         eu.hpBarFill.clear().fillStyle(0xff3333).fillRect(ex, ey, 100 * eRatio, 8);
+
+        // 精英怪預警圖標排版
+        if (eu.state.isElite && eu.state.telegraph) {
+            if (!eu.telegraphIcon) {
+                eu.telegraphIcon = this.add.text(ex + 50, ey - 20, '', { fontSize: '20px', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5);
+                this.mainLayer.add(eu.telegraphIcon);
+            }
+            const colors: Record<string, string> = { 'RED': '#ff0000', 'PURPLE': '#ff00ff', 'GOLD': '#ffff00' };
+            const statusColor = eu.state.telegraph ? colors[eu.state.telegraph] : '#fff';
+            eu.telegraphIcon.setText('●').setColor(statusColor);
+        } else if (eu.telegraphIcon) {
+             eu.telegraphIcon.setText('');
+        }
     }
 
     update() {
@@ -154,6 +198,9 @@ export class BattleScene extends Phaser.Scene {
         if (this.bossEntity) {
             this.bossEntity.updateInkParticles();
         }
+
+        // 陣法視覺更新
+        this.updateArrayVisuals();
 
         if (this.isAnimating || this.activeUnit) return;
 
@@ -168,20 +215,81 @@ export class BattleScene extends Phaser.Scene {
             const spdBonus = (unit.isPlayer && GlobalState.player.activeTalents?.includes('tal_water')) ? 5 : 0;
             unit.ag += (unit.state.spd + spdBonus) * 2.5; 
 
-            if (unit.ag >= 1000) {
+             if (unit.ag >= 1000) {
                 this.activeUnit = unit;
                 unit.ag = 0; 
+                
+                // 回合開始前，若陣法存在則推進
+                ArrayManager.advanceArrayTurn();
+                
                 this.startTurn(unit);
                 break;
             }
         }
     }
 
+    private updateArrayVisuals() {
+        const arr = GlobalState.battleArray;
+        if (arr) {
+            const texture = arr.type === 'CLEANSING' ? 'vfx_lotus' : 'vfx_taichi';
+            this.arrayFloorSprite.setTexture(texture).setAlpha(0.6).setRotation(this.arrayFloorSprite.rotation + 0.01);
+            this.arrayTurnsText.setText(`陣法剩餘：${arr.turns} 回合`).setAlpha(1);
+            
+            // 環境色調調優 (目前簡單用 Tint 模擬)
+            const tint = arr.type === 'CLEANSING' ? 0xccffff : 0xcccccc;
+            this.arrayFloorSprite.setTint(tint);
+        } else {
+            this.arrayFloorSprite.setAlpha(0);
+            this.arrayTurnsText.setAlpha(0);
+        }
+    }
+
     startTurn(unit: BattleUnit) {
         if (unit.isPlayer) {
             this.setUIVisible(true);
+            this.checkCombatTutorial();
+
+            // 墨寶被動：聚色珠
+            const acc = GlobalState.equipped.accessory;
+            if (acc && acc.bonusId === 'TREASURE_COLOR') {
+                GlobalState.worldColorValue = Math.min(100, GlobalState.worldColorValue + 2);
+                this.showFloatingNote('+2 色彩', '#00ffff', unit.sprite.x, unit.sprite.y - 150);
+            }
         } else {
-            this.time.delayedCall(800, () => this.executeAttack(unit, this.units.find(u => u.isPlayer)!));
+            // 精英怪 AI 行為
+            if (unit.state.isElite) {
+                const action = EliteAI.think(unit, this.units.find(u => u.isPlayer)!);
+                unit.state.telegraph = action.telegraph;
+                this.showFloatingNote(action.name, '#ffffff', unit.sprite.x, unit.sprite.y - 120);
+                action.execute(unit, this.units.find(u => u.isPlayer)!);
+                
+                if (action.type === 'attack') {
+                    this.executeAttack(unit, this.units.find(u => u.isPlayer)!);
+                } else {
+                    this.time.delayedCall(1000, () => {
+                         this.activeUnit = null;
+                         this.checkWinCondition();
+                    });
+                }
+            } else {
+                this.time.delayedCall(800, () => this.executeAttack(unit, this.units.find(u => u.isPlayer)!));
+            }
+        }
+    }
+
+    private async checkCombatTutorial() {
+        if (GlobalState.tutorialStep === 3) {
+             this.setUIVisible(false);
+             this.isAnimating = true;
+             
+             await CutsceneManager.play(this, [
+                 { type: 'CHAR_SAY', id: '蘇瑤', text: '沈大哥，這怪物的墨氣偏火（橙色），正是屬性核心！', portrait: 'portrait_su_yao_worried' },
+                 { type: 'CHAR_SAY', id: '蘇瑤', text: '試著使用「流雲·疾」（水屬性，藍色）的筆法，水能剋火，能造成極大的打擊！', portrait: 'portrait_su_yao_worried' }
+             ], {});
+             
+             this.isAnimating = false;
+             this.setUIVisible(true);
+             updateStateAndLog(s => s.tutorialStep = 4);
         }
     }
 
@@ -253,14 +361,8 @@ export class BattleScene extends Phaser.Scene {
             onUpdate: () => {
                 frameCount++;
                 // 水系高速技能或 Combo 時產生殘影 (Ghost Trail)
-                if (frameCount % 2 === 0 && (skill?.type === 'water' || isCombo)) {
-                     const ghost = this.add.sprite(attacker.sprite.x, attacker.sprite.y, attacker.sprite.texture.key);
-                     ghost.setOrigin(0.5, 1).setScale(0.8).setTintFill(0x88ccff).setAlpha(0.6);
-                     ghost.flipX = attacker.sprite.flipX; // 同步朝向
-                     this.mainLayer.addAt(ghost, 0); // 放在較底層
-                     this.tweens.add({
-                          targets: ghost, alpha: 0, duration: 300, onComplete: () => ghost.destroy()
-                     });
+                if (frameCount % 3 === 0 && (skill?.type === 'water' || isCombo)) {
+                     SkillVFXManager.createGhostTrail(attacker.sprite);
                 }
             },
             onComplete: () => {
@@ -276,11 +378,24 @@ export class BattleScene extends Phaser.Scene {
                             if (attacker.isPlayer) {
                                 // 評估 AI 連動
                                 this.suyaoAI.evaluateAction(attacker.state.atk, () => {
+                                    // 法寶被動：行動後觸發 (如：潤魂青玉)
+                                    const treasureResult = ArrayManager.checkPostActionTreasure();
+                                    if (treasureResult) {
+                                         this.showFloatingNote(treasureResult.msg, treasureResult.color, attacker.sprite.x, attacker.sprite.y - 150);
+                                         this.updateHPRedraw();
+                                    }
+
                                     this.isAnimating = false;
                                     this.activeUnit = null; 
                                     this.checkWinCondition();
                                 });
                             } else {
+                                // 墨獸特殊 AI 型別結算 (每回合結束)
+                                if (attacker.state.aiType === 'CORROSIVE' && !ArrayManager.isColorLocked()) {
+                                     GlobalState.worldColorValue = Math.max(0, GlobalState.worldColorValue - 2);
+                                     this.showFloatingNote('【腐蝕】色彩值流失', '#888888', attacker.sprite.x, attacker.sprite.y - 120);
+                                }
+                                
                                 this.isAnimating = false;
                                 this.activeUnit = null; 
                                 this.checkWinCondition();
@@ -290,6 +405,12 @@ export class BattleScene extends Phaser.Scene {
                 });
             }
         });
+    }
+
+    private showFloatingNote(msg: string, color: string, x: number, y: number) {
+        const txt = this.add.text(x, y, msg, { fontSize: '24px', color: color, stroke: '#000', strokeThickness: 5 }).setOrigin(0.5);
+        this.mainLayer.add(txt);
+        this.tweens.add({ targets: txt, y: y - 50, alpha: 0, duration: 2000, onComplete: () => txt.destroy() });
     }
 
     applyImpact(attacker: BattleUnit, defender: BattleUnit, skill?: SkillDefinition, isCombo: boolean = false) {
@@ -315,6 +436,23 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
+        // --- AI Archetypes 特殊防禦機制 ---
+        
+        // 1. 敏捷型：高機率閃避 (除非沈雲裝備了流雲天賦 - 假定 tal_water 增加命中)
+        if (!attacker.isPlayer && defender.isPlayer && GlobalState.player.activeTalents?.includes('tal_water')) {
+            // Player has water talent, normal hit.
+        } else if (defender.state.aiType === 'AGILE' && Math.random() < 0.3) {
+            this.showFloatingNote('【閃避】閃避率加成！', '#88ccff', defender.sprite.x, defender.sprite.y - 120);
+            return; // 命中失敗
+        }
+
+        // 2. 守禦型：機率減傷
+        let isBlocked = false;
+        if (defender.state.aiType === 'DEFENSIVE' && Math.random() < 0.25) {
+             isBlocked = true;
+             this.showFloatingNote('【墨守】傷害減免！', '#888888', defender.sprite.x, defender.sprite.y - 120);
+        }
+
         // 技能倍率與元素反應
         let multiplier = 1;
         if (skill) {
@@ -332,8 +470,28 @@ export class BattleScene extends Phaser.Scene {
         }
         
         if (attacker.state.affinity === 'Water' && defender.state.affinity === 'Fire') {
-            multiplier *= 1.5;
+            let elementalMult = 1.5;
+            const acc = GlobalState.equipped.accessory;
+            if (attacker.isPlayer && acc && acc.bonusId === 'TREASURE_RING') {
+                elementalMult = 1.7;
+            }
+            multiplier *= elementalMult;
             isSuperEffective = true;
+            
+            // 陣法連動：克制重置
+            if (ArrayManager.resetArrayDuration()) {
+                 this.showFloatingNote('【五行共鳴】陣法重置！', '#00ffff', defender.sprite.x, defender.sprite.y - 150);
+            }
+        }
+
+        // 視覺反饋：震動與噴砂
+        this.cameras.main.shake(150, 0.01);
+        SkillVFXManager.createHitSplash(defender.sprite.x, defender.sprite.y - 40);
+        
+        // 法寶被動：聚靈古鏡
+        const treasureResult = ArrayManager.checkOnDamageTreasure(finalDmg);
+        if (treasureResult) {
+             this.showFloatingNote(treasureResult.msg, treasureResult.color, defender.sprite.x, defender.sprite.y - 150);
         }
 
         // 烈火天賦判定：色彩度越低，攻擊加乘突破 1.2 倍
@@ -343,8 +501,36 @@ export class BattleScene extends Phaser.Scene {
             isFireTalentTriggered = true;
         }
 
+        // 【絕境墨染】反擊：色彩極低且殘血時大爆發
+        if (attacker.isPlayer && GlobalState.worldColorValue < 30 && attacker.state.hp < attacker.state.maxHp * 0.4) {
+             multiplier *= 2.0;
+             updateStateAndLog(s => s.player.hp = Math.min(s.player.maxHp, s.player.hp + (finalDmg * 0.3)));
+             this.showFloatingNote('【破墨之怒】吸血', '#ff0033', attacker.sprite.x, attacker.sprite.y - 180);
+        }
+
         if (!attacker.isPlayer) {
             multiplier *= (1 + (100 - GlobalState.worldColorValue) / 100);
+        }
+
+        if (isBlocked) multiplier *= 0.5;
+
+        // 墨染護甲 (Elite Only)
+        if (defender.state.isElite) {
+            multiplier *= EliteAI.getInkArmorReduction(GlobalState.worldColorValue);
+        }
+
+        // 裝備共鳴護盾
+        if (defender.sprite.getData('resonanceShield')) {
+            multiplier *= 0.5; // 護盾減傷 50%
+            defender.sprite.setData('resonanceShield', false); // 消耗護盾
+            this.showFloatingNote('【護盾抵消】', '#ffffff', defender.sprite.x, defender.sprite.y - 150);
+        }
+
+        // 【絕境墨染】：當色彩極低且生命垂危時，激發墨之意志，獲得 50% 減傷並回復靈力
+        if (defender.isPlayer && GlobalState.worldColorValue < 30 && defender.state.hp < defender.state.maxHp * 0.4) {
+             multiplier *= 0.5;
+             updateStateAndLog(s => s.player.mp = Math.min(s.player.maxMp, s.player.mp + 5));
+             this.showFloatingNote('【墨之意志】減傷', '#00ffcc', defender.sprite.x, defender.sprite.y - 180);
         }
 
         finalDmg = Math.floor(finalDmg * multiplier);
@@ -358,7 +544,36 @@ export class BattleScene extends Phaser.Scene {
              }, 80); // 卡幀 0.08 秒
         }
 
-        defender.state.hp = Math.max(0, defender.state.hp - finalDmg);
+        // 套用傷害與霸體判定 (Poise)
+        let actualDmg = finalDmg;
+        const potentialHp = defender.state.hp - actualDmg;
+
+        // 墨寶被動：墨守殘片 (致死保命)
+        const acc = GlobalState.equipped.accessory;
+        if (defender.isPlayer && potentialHp <= 0 && acc && acc.bonusId === 'TREASURE_SURVIVE' && defender.state.mp >= 10) {
+             actualDmg = defender.state.hp - 1; // 強制保留 1 點 HP
+             updateStateAndLog(s => s.player.mp = Math.max(0, s.player.mp - 20));
+             this.showFloatingNote('【墨守觸發】', '#ffff00', defender.sprite.x, defender.sprite.y - 150);
+        }
+
+        defender.state.hp = Math.max(0, defender.state.hp - actualDmg);
+        
+        let shouldShake = true;
+        if (defender.state.isElite && !isSuperEffective) {
+             shouldShake = false; // 霸體效應：非克制攻擊不产生硬直
+             this.showFloatingNote('【霸體】', '#ffffff', defender.sprite.x, defender.sprite.y - 150);
+        }
+
+        if (shouldShake) {
+            this.tweens.add({
+                targets: defender.sprite,
+                x: defender.sprite.x + (attacker.isPlayer ? 10 : -10),
+                duration: 50,
+                yoyo: true,
+                repeat: 2
+            });
+        }
+
         updateStateAndLog(state => {
             if(defender.isPlayer) state.player.hp = defender.state.hp;
             else state.enemy.hp = defender.state.hp;
@@ -453,6 +668,11 @@ export class BattleScene extends Phaser.Scene {
                 enemy.state.hp = enemy.state.maxHp; 
                 QuestManager.setFlag('boss_forest_defeated', true);
                 GlobalState.bossFailCount = 0;
+                
+                // 教學完成判定
+                if (GlobalState.tutorialStep === 4) {
+                    updateStateAndLog(s => s.tutorialStep = 5);
+                }
 
                 // 戰利品結算 (假設剛才是墨契揮毫，則 isBondFinisher = true)
                 // 這裡簡化：只要滿墨契結束就視為合擊完成

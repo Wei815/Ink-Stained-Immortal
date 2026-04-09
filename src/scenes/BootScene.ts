@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { EnemyDatabase } from '../systems/EnemyDatabase';
+import { SkillDatabase } from '../systems/SkillDatabase';
 
 export class BootScene extends Phaser.Scene {
     constructor() {
@@ -37,6 +39,10 @@ export class BootScene extends Phaser.Scene {
         });
 
         this.load.on('complete', () => {
+             // 載入完成後初始化資料庫
+             EnemyDatabase.init(this);
+             SkillDatabase.init(this);
+             
              this.tweens.add({
                  targets: [loadingText, progressBg, progressBar],
                  alpha: 0,
@@ -53,6 +59,33 @@ export class BootScene extends Phaser.Scene {
         }
         
         // 實際可載入：
-        // this.load.image('tileset_world', '/assets/tileset_world.png');
+        this.load.image('tileset_world', '/assets/tileset_world.png');
+        this.load.image('portrait_shen_yun', '/assets/portrait_shen_yun.png');
+        this.load.image('portrait_su_yao_worried', '/assets/portrait_su_yao_worried.png');
+        this.load.json('ch1_opening', '/assets/scripts/ch1_opening.json');
+        
+        // JSON 數據資料庫
+        this.load.json('monsters_db', '/assets/data/monsters.json');
+        this.load.json('skills_db', '/assets/data/skills.json');
+
+        // 生成的新素材
+        this.load.image('player_xianjian', '/assets/player_xianjian.png');
+        this.load.image('monster_dog', '/assets/monster_dog.png');
+        this.load.image('monster_traitor', '/assets/monster_traitor.png');
+        this.load.image('monster_slime', '/assets/monster_slime.png');
+        
+        // 粒子特效與陣法素材
+        this.load.image('ink_drop', '/assets/ink_drop.png');
+        this.load.image('brush_stroke', '/assets/brush_stroke.png');
+        this.load.image('vfx_lotus', '/assets/vfx_lotus.png');
+        this.load.image('vfx_taichi', '/assets/vfx_taichi.png');
+        this.load.image('item_jade', '/assets/item_jade.png');
+        this.load.image('item_mirror', '/assets/item_mirror.png');
+
+        // Cinematic 演出資產
+        this.load.image('logo_ink', '/assets/logo_ink.png');
+        this.load.image('vfx_brush_mask', '/assets/vfx_brush_mask.png');
+        this.load.image('seal_finish', '/assets/seal_finish.png');
+        this.load.image('cg_ending_a', '/assets/cg_ending_a.png');
     }
 }

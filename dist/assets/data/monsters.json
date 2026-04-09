@@ -1,0 +1,35 @@
+[
+    {
+        "id": "M001",
+        "name": "墨染野犬",
+        "aiType": "DEFENSIVE",
+        "hp": 120,
+        "atk": 15,
+        "spd": 10,
+        "element": "FIRE",
+        "texture": "monster_dog",
+        "description": "當 colorValue < 30 時，DEF 提升 50%。"
+    },
+    {
+        "id": "M002",
+        "name": "靈族叛徒",
+        "aiType": "AGILE",
+        "hp": 80,
+        "atk": 25,
+        "spd": 40,
+        "element": "WOOD",
+        "texture": "monster_traitor",
+        "description": "每回合有 15% 機率閃避沈雲的普通攻擊。"
+    },
+    {
+        "id": "M003",
+        "name": "焦墨史萊姆",
+        "aiType": "CORROSIVE",
+        "hp": 150,
+        "atk": 10,
+        "spd": 5,
+        "element": "EARTH",
+        "texture": "monster_slime",
+        "description": "每次受擊會使 GlobalState.colorValue 強制下降 2 點。"
+    }
+]

@@ -98,28 +98,16 @@ class MapManagerService {
 
         const isCorrupted = GlobalState.worldColorValue < 30;
 
-        // 為了效能，採用渲染到 RenderTexture 或單純使用 Graphics batch
-        // 由於是要實際擺放在世界坐標，使用單一 Graphics 繪製整個 Chunk 是最省效能的方式
-        const chunkGraphics = this.scene.add.graphics();
-        container.add(chunkGraphics);
-
-        for (let i = 0; i < CHUNK_SIZE; i++) {
-            for (let j = 0; j < CHUNK_SIZE; j++) {
-                const nx = i * TILE_SIZE;
-                const ny = j * TILE_SIZE;
-                
-                // 動態材質判斷: 若墨蝕狀態，地板切換為暗色系
-                let color = 0x55aa55; // 草地
-                if (isCorrupted) color = 0x222222; // 枯槁大地
-                
-                if (random() > 0.8) color = isCorrupted ? 0x111111 : 0x777777; // 道路或枯骨
-                
-                chunkGraphics.fillStyle(color, 1);
-                chunkGraphics.fillRect(nx, ny, TILE_SIZE, TILE_SIZE);
-                chunkGraphics.lineStyle(1, isCorrupted ? 0x000000 : 0x449944, 0.3);
-                chunkGraphics.strokeRect(nx, ny, TILE_SIZE, TILE_SIZE);
-            }
+        const textureKey = 'tileset_world';
+        const bg = this.scene.add.tileSprite(0, 0, CHUNK_PIXEL_SIZE, CHUNK_PIXEL_SIZE, textureKey);
+        bg.setOrigin(0, 0);
+        
+        if (isCorrupted) {
+            bg.setTint(0x555555);
+        } else {
+            bg.setTint(0xffffff);
         }
+        container.add(bg);
 
         // Procedural POI 隨機障礙 - "墨池" (有害地形)
         if (GlobalState.worldColorValue < 40 && random() > 0.8) {
@@ -163,6 +151,27 @@ class MapManagerService {
                  radius: 50,
                  sprite: hiddenLore
              });
+        }
+
+        // 交互式草叢：增加地表活動感，隨機掉落墨晶
+        if (random() > 0.7) {
+            const bx = (cx * CHUNK_PIXEL_SIZE) + Math.floor(random() * CHUNK_SIZE) * TILE_SIZE;
+            const by = (cy * CHUNK_PIXEL_SIZE) + Math.floor(random() * CHUNK_SIZE) * TILE_SIZE;
+            
+            // 繪製一個草叢方塊
+            const bush = this.scene.add.rectangle(bx - (cx * CHUNK_PIXEL_SIZE), by - (cy * CHUNK_PIXEL_SIZE), 32, 32, 0x224422);
+            bush.setAlpha(0.6).setAngle(Phaser.Math.Between(0, 360));
+            container.add(bush);
+
+            InteractionManager.registerEntity({
+                id: `bush_${cx}_${cy}_${bx}`,
+                type: 'Bush',
+                x: bx,
+                y: by,
+                radius: 40,
+                sprite: bush,
+                data: { shards: Math.floor(random() * 5) + 1 }
+            });
         }
     }
 

@@ -1,5 +1,5 @@
-import Phaser from 'phaser';
 import { GlobalState } from '../state/GlobalState';
+import { ArrayManager } from './ArrayManager';
 
 export interface LootItem {
     item: string;
@@ -44,10 +44,13 @@ class BalanceManagerService {
         // 3. 爆擊乘區
         const critMultiplier = isCrit ? 1.5 : 1.0;
 
-        // 4. ±5% 傷害浮動 (RNG Variance)
+        // 4. 陣法減傷 (墨守陣)
+        const arrayReduction = (!attackerIsPlayer) ? ArrayManager.getDamageReduction() : 1.0;
+
+        // 5. ±5% 傷害浮動 (RNG Variance)
         const variance = 0.95 + Phaser.Math.FloatBetween(0, 0.1);
 
-        const dmg = Math.floor(baseDamage * levelMultiplier * critMultiplier * variance);
+        const dmg = Math.floor(baseDamage * levelMultiplier * critMultiplier * arrayReduction * variance);
 
         return { dmg: Math.max(1, dmg), isCrit, isMiss };
     }

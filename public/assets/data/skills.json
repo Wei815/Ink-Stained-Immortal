@@ -1,0 +1,29 @@
+[
+    {
+        "id": "S001",
+        "name": "流雲·疾",
+        "element": "WATER",
+        "cost": 10,
+        "power": 30,
+        "vfx": "WATER",
+        "description": "消耗: 10 MP, 威力: 30。若 colorValue > 70，連擊判定加成。"
+    },
+    {
+        "id": "S002",
+        "name": "烈火·崩",
+        "element": "FIRE",
+        "cost": 15,
+        "power": 50,
+        "vfx": "FIRE",
+        "description": "消耗: 15 MP, 威力: 50。造成高額傷害，但使用後 colorValue 下降 5 點。"
+    },
+    {
+        "id": "S003",
+        "name": "墨守·沉",
+        "element": "EARTH",
+        "cost": 20,
+        "power": 0,
+        "vfx": "INK",
+        "description": "消耗: 20 MP, 威力: 0。為沈雲提供 2 回合護盾，期間 colorValue 鎖定不降。"
+    }
+]

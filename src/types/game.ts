@@ -15,9 +15,29 @@ export interface EntityStats {
     spd: number; 
     luk: number;
     affinity: 'Gold' | 'Wood' | 'Water' | 'Fire' | 'Earth';
+    // 基礎數值 (不含裝備)
+    baseAtk?: number;
+    baseHp?: number;
+    baseDef?: number;
     talentPoints?: number;
     activeTalents?: string[];
+    aiType?: 'DEFENSIVE' | 'AGILE' | 'CORROSIVE' | 'BOSS';
     pos?: { x: number, y: number, facing: string };
+    // 精英怪與行為樹擴充
+    isElite?: boolean;
+    poise?: number; // 霸體值
+    telegraph?: 'RED' | 'PURPLE' | 'GOLD' | null;
+}
+
+export interface LootDrop {
+    item: string;
+    chance: number;
+    amount?: [number, number]; // [min, max]
+}
+
+export interface LootPool {
+    shards: [number, number];
+    possibleDrops: LootDrop[];
 }
 
 /** 
@@ -50,4 +70,25 @@ export interface Item {
     type: 'WEAPON' | 'ARMOR' | 'CONSUMABLE' | 'KEY_ITEM';
     effect: (target: EntityStats) => void;
     price: number;
+}
+
+export type SuYaoTreasure = 'JADE' | 'MIRROR';
+export type ArrayType = 'CLEANSING' | 'INK_LOCK';
+
+export interface ArrayState {
+    type: ArrayType;
+    turns: number;
+}
+
+export type EquipmentType = 'WEAPON' | 'ARMOR' | 'ACCESSORY';
+export type EquipmentElement = 'GOLD' | 'WOOD' | 'WATER' | 'FIRE' | 'EARTH' | 'NONE';
+
+export interface Equipment {
+    id: string;
+    name: string;
+    type: EquipmentType;
+    level: number;
+    baseStats: { atk?: number, hp?: number, def?: number };
+    element: EquipmentElement;
+    bonusId: 'TREASURE_COLOR' | 'TREASURE_RING' | 'TREASURE_SURVIVE' | 'NONE';
 }

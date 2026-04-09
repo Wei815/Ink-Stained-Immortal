@@ -53,7 +53,10 @@ export class SummaryScene extends Phaser.Scene {
              
              this.cameras.main.fadeOut(1000, 255, 255, 255, (cam: any, prog: number) => {
                   if (prog === 1) {
-                      this.scene.start('TitleScene');
+                      this.scene.start('CinematicScene', { 
+                          mode: 'ENDING', 
+                          endingType: this.result.type 
+                      });
                   }
              });
         });

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SaveManager } from '../state/SaveManager';
 import { GlobalState } from '../state/GlobalState';
+import { BattleSimulator } from '../systems/BattleSimulator';
 
 export class TitleScene extends Phaser.Scene {
     constructor() {
@@ -11,15 +12,15 @@ export class TitleScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor('#1c1c1e');
         const { width, height } = this.cameras.main;
         
-        this.add.text(width / 2, height / 3, '墨染仙塵', {
-            fontSize: '72px',
+        this.add.text(width / 2, height / 4, '墨染仙塵', {
+            fontSize: '84px',
             color: '#e0e0e0',
             fontFamily: 'serif',
             stroke: '#000',
-            strokeThickness: 8
+            strokeThickness: 10
         }).setOrigin(0.5);
 
-        const startBtn = this.add.text(width / 2, height / 2 + 20, '新開始', { fontSize: '32px', color: '#aaaaaa' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        const startBtn = this.add.text(width / 2, height / 2 + 100, ' 新開始 ', { fontSize: '36px', color: '#aaaaaa', padding: { x: 20, y: 10 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
         startBtn.on('pointerover', () => startBtn.setColor('#ffffff'));
         startBtn.on('pointerout', () => startBtn.setColor('#aaaaaa'));
         startBtn.on('pointerdown', () => {
@@ -30,12 +31,12 @@ export class TitleScene extends Phaser.Scene {
             GlobalState.player.activeTalents = [];
             GlobalState.worldColorValue = 100;
             this.cameras.main.fadeOut(500, 0, 0, 0, (cam: any, prog: number) => {
-                if(prog === 1) this.scene.start('MainScene');
+                if(prog === 1) this.scene.start('CinematicScene', { mode: 'OPENING' });
             });
         });
 
         if (SaveManager.hasSave()) {
-            const continueBtn = this.add.text(width / 2, height / 2 + 80, '繼續旅程', { fontSize: '32px', color: '#aaaaaa' }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+            const continueBtn = this.add.text(width / 2, height / 2 + 180, ' 繼續旅程 ', { fontSize: '36px', color: '#aaaaaa', padding: { x: 20, y: 10 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
             continueBtn.on('pointerover', () => continueBtn.setColor('#00ff00'));
             continueBtn.on('pointerout', () => continueBtn.setColor('#aaaaaa'));
             continueBtn.on('pointerdown', () => {
@@ -45,5 +46,10 @@ export class TitleScene extends Phaser.Scene {
                 });
             });
         }
+
+        // 開發者測試掛鉤：按 T 執行戰鬥數值模擬
+        this.input.keyboard?.on('keydown-T', () => {
+            BattleSimulator.runSuite();
+        });
     }
 }

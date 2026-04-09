@@ -1,4 +1,4 @@
-import { EntityStats, Item, Quest } from '../types/game';
+import { EntityStats, Item, Quest, SuYaoTreasure, ArrayState, Equipment } from '../types/game';
 import { GameSignals, Events } from '../events/GameSignals';
 
 let _worldColorValue = 100;
@@ -13,9 +13,21 @@ interface IGlobalState {
     storyFlags: Record<string, boolean>;
     activeQuests: Quest[];
     bossFailCount: number; // 戰敗憐憫計數器
+    // 經濟資源
+    inkShards: number;
+    spiritDew: number;
+    fateMaterials: number;
+    tutorialStep: number; // 0: 開場, 1: 移動教學, 2: 色彩解謎, 3: 戰鬥教學, 4: 天賦教學, 5: 完成
+    // 蘇瑤輔助系統
+    suyaoTreasure: SuYaoTreasure | null;
+    battleArray: ArrayState | null;
+    // 裝備系統
+    equipped: { weapon: Equipment | null, armor: Equipment | null, accessory: Equipment | null };
+    equipmentInventory: Equipment[];
 }
 
 export const GlobalState: IGlobalState = {
+    // ...屬性初始化
     player: {
         id: 'player_01',
         name: '沈雲',
@@ -26,11 +38,15 @@ export const GlobalState: IGlobalState = {
         maxMp: 50,
         atk: 10,
         def: 5,
+        baseAtk: 10,
+        baseHp: 100,
+        baseDef: 5,
         spd: 12,
         luk: 5,
         affinity: 'Water',
         talentPoints: 2, 
         activeTalents: [],
+        aiType: 'AGILE', // 玩家操作默認，但擴展欄位留守
         pos: { x: 200, y: 300, facing: 'down' }
     },
     enemy: {
@@ -47,12 +63,21 @@ export const GlobalState: IGlobalState = {
         luk: 2,
         affinity: 'Fire',
         talentPoints: 0,
-        activeTalents: []
+        activeTalents: [],
+        aiType: 'DEFENSIVE'
     },
     inventory: [
         { id: 'item_clearcolor', type: 'CONSUMABLE', price: 50, effect: (target) => { GlobalState.worldColorValue = 100; } },
         { id: 'item_healhp', type: 'CONSUMABLE', price: 20, effect: (target) => { target.hp = Math.min(target.maxHp, target.hp + 50); } }
     ],
+    inkShards: 0,
+    spiritDew: 0,
+    fateMaterials: 0,
+    tutorialStep: 0,
+    suyaoTreasure: 'JADE',
+    battleArray: null,
+    equipped: { weapon: null, armor: null, accessory: null },
+    equipmentInventory: [],
     get worldColorValue() {
         return _worldColorValue;
     },

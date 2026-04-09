@@ -1,4 +1,5 @@
 import { GlobalState } from './GlobalState';
+import { EquipmentManager } from '../systems/EquipmentManager';
 
 export const SaveManager = {
     _generateChecksum(data: string): string {
@@ -43,6 +44,7 @@ export const SaveManager = {
                 }
 
                 console.log("=== [系統] 讀取存檔成功！ ===");
+                EquipmentManager.syncPlayerStats();
                 return true;
             }
         } catch (e) {
